@@ -1,0 +1,213 @@
+# ==============================================================================
+#           Optimized Flask App for LaTeX Conversion (v4 - No ToC)
+#                             (可以直接复制替换整个文件)
+# ==============================================================================
+
+import os
+import requests
+from flask import Flask, render_template, request, jsonify
+from dotenv import load_dotenv
+
+# --- 1. 安全加载环境变量 ---
+load_dotenv()
+
+app = Flask(__name__)
+
+# --- 2. 从环境变量中安全地获取API配置 ---
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.chatst.org/v1")
+API_KEY = os.getenv("API_KEY")
+MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-pro")
+
+
+@app.route('/')
+def index():
+    """渲染主页"""
+    return render_template('index.html')
+
+
+@app.route('/convert', methods=['POST'])
+def convert_to_latex():
+    """
+    接收聊天记录，一次性调用AI API，生成完整的LaTeX代码。
+    """
+    if not API_KEY:
+        return jsonify({'error': '服务器未配置API_KEY，请检查 .env 文件。'}), 500
+
+    try:
+        data = request.json
+        subject = data.get('subject')
+        chat_content = data.get('content')
+        note_type = data.get('note_type', '知识梳理')
+        use_scene = data.get('use_scene', '日常复习')
+
+        if not subject or not chat_content:
+            return jsonify({'error': '学习主题和聊天记录不能为空。'}), 400
+
+        # --- 3. 创建一个最终优化的、完整的Prompt ---
+        final_prompt = create_optimized_prompt(subject, chat_content, note_type, use_scene)
+
+        # --- 4. 一次性调用API获取完整的LaTeX代码 ---
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {API_KEY}'
+        }
+        api_data = {
+            'model': MODEL_NAME,
+            'messages': [{'role': 'user', 'content': final_prompt}],
+            'temperature': 0.2,
+            'max_tokens': 4096
+        }
+
+        response = requests.post(
+            f'{API_BASE_URL}/chat/completions',
+            headers=headers,
+            json=api_data,
+            timeout=120
+        )
+
+        response.raise_for_status()
+
+        result = response.json()
+
+        latex_code = result['choices'][0]['message']['content']
+        # 清理AI返回结果中可能包含的额外字符或Markdown代码块标记
+        if latex_code.strip().startswith("```latex"):
+            latex_code = latex_code.strip()[7:].strip()
+        if latex_code.strip().endswith("```"):
+            latex_code = latex_code.strip()[:-3].strip()
+
+        return jsonify({'latex': latex_code})
+
+    except requests.exceptions.HTTPError as http_err:
+        error_details = f"API请求失败: {http_err.response.status_code} - {http_err.response.text}"
+        print(error_details)
+        return jsonify({'error': error_details}), 500
+    except Exception as e:
+        print(f"服务器内部错误: {e}")
+        return jsonify({'error': f'服务器发生未知错误: {str(e)}'}), 500
+
+
+def create_optimized_prompt(subject, chat_log, note_type, use_scene):
+    """
+    创建一个健壮的、包含所有关键指令的Prompt。
+    """
+    prompt = f"""
+# Role & Goal
+You are a meticulous LaTeX expert. Your task is to take the entire LaTeX template provided below, from `\\documentclass` to `\\end{{document}}`, and output it as a single, complete block of code. While reproducing the template, you must replace the placeholder comments (like `% AI to fill...`) with the corresponding information extracted and organized from the chat log.
+
+# CRUCIAL INSTRUCTIONS (Must be followed without exception)
+1.  **Reproduce the Entire Template:** Your primary task is to output the *entire* LaTeX template provided below. You MUST NOT omit any part of it, especially the preamble (everything before `\\begin{{document}}`).
+2.  **Escape Special Characters:** You MUST escape all LaTeX special characters found within the user's chat content (`%` -> `\\%`, `$` -> `\\$`, `_` -> `\\_`, etc.).
+3.  **Clean and Complete Code Output:** Your ENTIRE output must be ONLY the raw, complete LaTeX code, forming a single, valid `.tex` file. Do not add ANY conversational text, explanations, or markdown formatting (like ```latex ... ```).
+4.  **Content Filling Principles:** Organize information logically, remove conversational fluff, and use `\\textbf{{}}` for key terms.
+5.  **Empty Sections:** If the chat log lacks info for a section, keep the section heading and leave the content area blank.
+
+# Input Data
+- **Learning Topic:** {subject}
+- **Note Type:** {note_type}
+- **Use Scene:** {use_scene}
+- **Chat Log:**
+\"\"\"
+{chat_log}
+\"\"\"
+
+# LaTeX Template to be Reproduced and Filled
+% --- Document Class & Geometry ---
+\\documentclass[a4paper]{{article}}
+\\usepackage{{geometry}}
+\\geometry{{a4paper, left=2cm, right=2cm, top=2.5cm, bottom=2.5cm}}
+
+% --- Core Packages: CJK Support, Fonts, Math, and Formatting ---
+\\usepackage{{xeCJK}}
+\\usepackage{{amsmath,amssymb,amsthm}}
+\\usepackage[most]{{tcolorbox}}
+\\usepackage{{enumerate}}
+\\usepackage{{graphicx}}
+\\usepackage{{hyperref}}
+
+% --- Document & Font Setup ---
+\\setCJKmainfont{{Noto Serif CJK SC}} 
+\\hypersetup{{colorlinks=true, linkcolor=blue, urlcolor=blue}}
+\\author{{Generated by AI Assistant}}
+\\date{{\\today}}
+
+% --- Custom Color Boxes ---
+\\newtcolorbox{{keyconceptbox}}[1][]{{
+  colback=yellow!5!white,
+  colframe=yellow!75!black,
+  fonttitle=\\bfseries,
+  title=关键概念,
+  #1
+}}
+
+\\newtcolorbox{{examplebox}}[1][]{{
+  colback=blue!5!white,
+  colframe=blue!75!black,
+  fonttitle=\\bfseries,
+  title=典型例题,
+  #1
+}}
+
+% --- Document Title ---
+\\title{{{subject} 学习笔记 (类型：{note_type} / 场景：{use_scene})}}
+
+% --- DOCUMENT BODY BEGINS ---
+\\begin{{document}}
+\\maketitle
+
+% --- MODIFICATION: Table of Contents REMOVED as per user request. ---
+% The commands \\tableofcontents and \\newpage have been deleted.
+% Content will now start immediately after the title.
+
+\\section{{核心知识点}}
+\\begin{{keyconceptbox}}
+% AI to fill: Core concepts and definitions from chat.
+\\end{{keyconceptbox}}
+
+\\section{{重要公式与定理}}
+\\begin{{align*}}
+% AI to fill: Key formulas and theorems, one per line.
+\\end{{align*}}
+
+\\section{{解题方法与技巧}}
+% AI to fill: Problem-solving methods. Use \\subsection for each method.
+
+\\section{{典型例题回顾}}
+\\begin{{examplebox}}
+\\textbf{{题目：}} % AI to fill: Problem statement
+\\vspace{{1em}}
+\\textbf{{解法：}} % AI to fill: Solution steps
+\\vspace{{1em}}
+\\textbf{{关键点：}} % AI to fill: Key insights
+\\end{{examplebox}}
+
+\\section{{易错点与注意事项}}
+\\begin{{itemize}}
+% AI to fill: Common mistakes.
+\\item 
+\\end{{itemize}}
+
+\\section{{拓展思考}}
+% AI to fill: Deeper understanding.
+
+\\end{{document}}
+"""
+    return prompt
+
+
+if __name__ == '__main__':
+    if not API_KEY:
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print("!!! 错误: API_KEY 未设置。                           !!!")
+        print("!!! 请在项目根目录下创建一个名为 .env 的文件，       !!!")
+        print("!!! 并在其中添加一行：                               !!!")
+        print("!!! API_KEY=\"sk-YourSecretKeyHere\"                   !!!")
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    else:
+        print("========================================================")
+        print("Flask服务器已准备就绪，正在启动...")
+        print(f"API Endpoint: {API_BASE_URL}")
+        print(f"Using Model: {MODEL_NAME}")
+        print("请通过 http://127.0.0.1:5000 访问Web界面。")
+        print("========================================================")
+        app.run(debug=True, port=5000)
