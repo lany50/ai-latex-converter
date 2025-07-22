@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI聊天记录转LaTeX</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>AI聊天记录转LaTeX工具</h1>
+
+        <div class="input-section">
+            <h2>输入聊天记录</h2>
+
+            <!-- 新增：学习主题输入 -->
+            <div class="subject-input">
+                <label for="subjectInput">学习主题（例如：Python编程）：</label>
+                <input type="text" id="subjectInput" placeholder="输入学习主题" required>
+            </div>
+
+            <!-- 文件上传 -->
+            <div class="file-upload">
+                <input type="file" id="fileInput" accept=".txt" />
+                <label for="fileInput">选择TXT文件</label>
+            </div>
+
+            <!-- 文本输入框 -->
+            <div class="text-input">
+                <textarea id="chatContent" placeholder="或者直接粘贴聊天记录到这里..."></textarea>
+            </div>
+
+            <button id="convertBtn" class="convert-btn">转换为LaTeX</button>
+        </div>
+
+        <!-- 加载提示 -->
+        <div id="loading" class="loading" style="display: none;">
+            <p>正在转换中，请稍候...</p>
+            <div class="spinner"></div>
+        </div>
+
+        <!-- 结果展示 -->
+        <div class="result-section" id="resultSection" style="display: none;">
+            <h2>生成的LaTeX代码</h2>
+            <div class="result-actions">
+                <button id="copyBtn" class="copy-btn">复制到剪贴板</button>
+                <button id="downloadBtn" class="download-btn">下载.tex文件</button>
+            </div>
+            <textarea id="latexResult" readonly></textarea>
+        </div>
+
+        <!-- 使用说明 -->
+        <div class="instructions">
+            <h3>使用说明</h3>
+            <ul>
+                <li>支持直接粘贴聊天记录或上传txt文件</li>
+                <li>自动处理长文本，避免API限制</li>
+                <li>生成的LaTeX代码可直接在Overleaf中使用</li>
+                <li>确保表格和代码块格式正确</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
